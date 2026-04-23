@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SacRecord {
+  id           Int      @id @default(autoincrement())
+  trimestreAno String
+  sacId        Int
+  fabricante   String
+  tipo         String
+  custoProduto Decimal  @db.Decimal(12, 4)
+  custoEnvio   Decimal  @db.Decimal(12, 4)
+  custoColeta  Decimal  @db.Decimal(12, 4)
+  custoTotal   Decimal  @db.Decimal(12, 4)
+  mes          Int
+  createdAt    DateTime @default(now())
+
+  @@unique([trimestreAno, sacId])
+  @@index([trimestreAno])
+  @@index([fabricante])
+  @@index([tipo])
+}
