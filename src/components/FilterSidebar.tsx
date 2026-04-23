@@ -28,17 +28,9 @@ const MESES_LABEL: Record<number, string> = {
   9:'Setembro', 10:'Outubro', 11:'Novembro', 12:'Dezembro',
 }
 
-// Fabricantes conhecidos por tipo — classificação do mercado solar FV BR
-const FAB_INVERSORES = ['TSUNESS', 'SOLPLANET', 'SOFAR', 'SUNGROW', 'SMA', 'ABB', 'FRONIUS', 'HUAWEI', 'DEYE', 'SHINEMASTER']
-const FAB_MODULOS    = ['ERA', 'CANADIAN SOLAR', 'JINKO', 'LONGI', 'TRINA', 'BYD']
-// Se não estiver em nenhuma lista acima → "Ambos/Outros"
-
-function guessTipo(fabricante: string, tiposNosDados: Set<string>): 'Inversor' | 'Módulo' | 'Bateria' | 'Misto' {
-  const upper = fabricante.toUpperCase()
-  if (FAB_INVERSORES.some(f => upper.includes(f))) return 'Inversor'
-  if (FAB_MODULOS.some(f => upper.includes(f))) return 'Módulo'
-  return 'Misto'
-}
+const FAB_INVERSORES = ['DEYE', 'SOLPLANET', 'TSUNESS', 'AUXSOL', 'GOODWE', 'TECHPOWER', 'VEIKONG']
+const FAB_BATERIAS   = ['UNIPOWER']
+// Tudo que não for inversor nem bateria é tratado como módulo
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -139,12 +131,11 @@ export default function FilterSidebar(props: FilterSidebarProps) {
     filteredSacs, totalSacs,
   } = props
 
-  // Agrupar fabricantes por tipo (baseado em dados reais + heurística de mercado)
   const fabInversores = allFabricantes.filter(f => FAB_INVERSORES.some(k => f.toUpperCase().includes(k)))
-  const fabModulos    = allFabricantes.filter(f => FAB_MODULOS.some(k => f.toUpperCase().includes(k)))
-  const fabOutros     = allFabricantes.filter(f =>
+  const fabBaterias   = allFabricantes.filter(f => FAB_BATERIAS.some(k => f.toUpperCase().includes(k)))
+  const fabModulos    = allFabricantes.filter(f =>
     !FAB_INVERSORES.some(k => f.toUpperCase().includes(k)) &&
-    !FAB_MODULOS.some(k => f.toUpperCase().includes(k))
+    !FAB_BATERIAS.some(k => f.toUpperCase().includes(k))
   )
 
   const toggleFab = (cmd: string) => {
@@ -265,14 +256,14 @@ export default function FilterSidebar(props: FilterSidebarProps) {
             color="#1D9E75"
           />
         )}
-        {fabOutros.length > 0 && (
+        {fabBaterias.length > 0 && (
           <FabGroup
-            title="Outros"
-            fabricantes={fabOutros}
+            title="Baterias"
+            fabricantes={fabBaterias}
             allFabs={allFabricantes}
             selected={fabricantes}
             onToggle={toggleFab}
-            color="#9CA3AF"
+            color="#F5C400"
           />
         )}
       </Section>
