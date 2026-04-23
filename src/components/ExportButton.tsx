@@ -4,14 +4,18 @@ interface Props {
   trimestres: string[]
   fabricantes: string[]
   tipos: string[]
+  meses: number[]
+  allMeses: number[]
 }
 
-export default function ExportButton({ trimestres, fabricantes, tipos }: Props) {
+export default function ExportButton({ trimestres, fabricantes, tipos, meses, allMeses }: Props) {
   const handleExport = () => {
     const params = new URLSearchParams()
     if (trimestres.length)  params.set('trimestre',  trimestres.join(','))
     if (fabricantes.length) params.set('fabricante', fabricantes.join(','))
     if (tipos.length)       params.set('tipo',       tipos.join(','))
+    // só envia meses se for um subconjunto (filtragem ativa)
+    if (meses.length && meses.length < allMeses.length) params.set('mes', meses.join(','))
     window.location.href = `/api/export?${params.toString()}`
   }
 

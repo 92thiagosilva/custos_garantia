@@ -166,6 +166,8 @@ export default function Dashboard() {
               trimestres={filters.trimestres}
               fabricantes={filters.fabricantes.length === allFabricantes.length ? [] : filters.fabricantes}
               tipos={filters.tipos.length === allTipos.length ? [] : filters.tipos}
+              meses={filters.meses}
+              allMeses={allMeses}
             />
             <button
               onClick={() => setShowUpload(true)}
