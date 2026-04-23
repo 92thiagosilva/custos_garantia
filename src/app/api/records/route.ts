@@ -53,10 +53,14 @@ export async function POST(request: NextRequest) {
     mes:          r.mes,
   }))
 
-  const result = await prisma.sacRecord.createMany({
-    data,
-    skipDuplicates: true,
+  // Apaga todos os registros dos trimestres presentes no import antes de reinserir.
+  // Garante que um re-import sempre reflita os valores atuais da planilha.
+  const trimestresNoImport = [...new Set(data.map(r => r.trimestreAno))]
+  await prisma.sacRecord.deleteMany({
+    where: { trimestreAno: { in: trimestresNoImport } },
   })
 
-  return Response.json({ inserted: result.count })
+  const result = await prisma.sacRecord.createMany({ data })
+
+  return Response.json({ inserted: result.count, replaced: trimestresNoImport })
 }

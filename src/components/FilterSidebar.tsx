@@ -268,22 +268,6 @@ export default function FilterSidebar(props: FilterSidebarProps) {
         )}
       </Section>
 
-      {/* Tipo de Produto */}
-      <Section title="Tipo de Produto" defaultOpen>
-        {allTipos.map(t => {
-          const colors: Record<string, string> = { Inversor: '#378ADD', Módulo: '#1D9E75', Bateria: '#F5C400' }
-          return (
-            <Checkbox
-              key={t}
-              label={t}
-              checked={tipos.includes(t)}
-              onChange={() => onTipo(tipos.includes(t) ? tipos.filter(x => x !== t) : [...tipos, t])}
-              color={colors[t] ?? '#9CA3AF'}
-            />
-          )
-        })}
-      </Section>
-
       {/* Tipo de Custo */}
       <Section title="Tipo de Custo" defaultOpen>
         <Checkbox label="Custo de Produto"  checked={tiposCusto.produto} onChange={() => onTiposCusto({ ...tiposCusto, produto: !tiposCusto.produto })} color="#1E3A5F" />
