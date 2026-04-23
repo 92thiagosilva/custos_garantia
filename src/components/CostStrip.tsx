@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { fmts } from '@/lib/formatters'
 
 interface Props {
@@ -20,28 +21,28 @@ export default function CostStrip({ custoProduto, custoEnvio, custoColeta, sacs,
       value: fmts(custoProduto),
       sub: `${sacs} SACs · R$${sacs > 0 ? Math.round(custoProduto / sacs).toLocaleString('pt-BR') : 0}/SAC`,
       pct: total > 0 ? Math.round((custoProduto / total) * 100) + '%' : '—',
-      bg: 'bg-fotus-blue text-white',
+      style: { background: '#1E3A5F', color: 'white' } as React.CSSProperties,
     },
     {
       label: 'Frete de Envio',
       value: fmts(custoEnvio),
       sub: `${pctEnvio}% do total · R$${sacs > 0 ? Math.round(custoEnvio / sacs).toLocaleString('pt-BR') : 0}/SAC`,
       pct: pctEnvio + '%',
-      bg: 'bg-fotus-yellow text-fotus-blue',
+      style: { background: '#F5C400', color: '#1E3A5F' } as React.CSSProperties,
     },
     {
       label: 'Frete de Coleta',
       value: fmts(custoColeta),
       sub: `${pctColeta}% do total · R$${sacs > 0 ? Math.round(custoColeta / sacs).toLocaleString('pt-BR') : 0}/SAC`,
       pct: pctColeta + '%',
-      bg: 'bg-fotus-sky text-white',
+      style: { background: '#378ADD', color: 'white' } as React.CSSProperties,
     },
   ]
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
       {cards.map(card => (
-        <div key={card.label} className={`relative rounded-xl px-5 py-4 overflow-hidden ${card.bg}`}>
+        <div key={card.label} className="relative rounded-xl px-5 py-4 overflow-hidden" style={card.style}>
           <p className="text-[10px] font-semibold uppercase tracking-wider opacity-60">{card.label}</p>
           <p className="font-mono text-[28px] font-bold leading-none mt-1.5 tracking-tight">{card.value}</p>
           <p className="text-[11px] opacity-55 mt-1.5">{card.sub}</p>

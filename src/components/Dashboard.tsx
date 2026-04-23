@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import type { SacRecord, FilterState, AggByFab, AggByTrimestre } from '@/types/sac'
-import FilterPanel from './FilterPanel'
+import FilterSidebar from './FilterSidebar'
 import KpiRow from './KpiRow'
 import CostStrip from './CostStrip'
 import DetailsTable from './DetailsTable'
@@ -42,18 +42,11 @@ export default function Dashboard() {
       const data: SacRecord[] = await res.json()
       setAllRecords(data)
 
-      // Initialize all filters to "all selected"
       const trimestres = [...new Set(data.map(d => d.trimestreAno))].sort()
       const fabricantes = [...new Set(data.map(d => d.fabricante))].sort()
       const tipos       = [...new Set(data.map(d => d.tipo))].sort()
       const meses       = [...new Set(data.map(d => d.mes))].sort((a, b) => a - b)
-      setFilters(prev => ({
-        ...prev,
-        trimestres,
-        fabricantes,
-        tipos,
-        meses,
-      }))
+      setFilters(prev => ({ ...prev, trimestres, fabricantes, tipos, meses }))
     } finally {
       setLoading(false)
     }
@@ -61,13 +54,11 @@ export default function Dashboard() {
 
   useEffect(() => { fetchRecords() }, [fetchRecords])
 
-  // Derived: metadata from all records
   const allFabricantes = useMemo(() => [...new Set(allRecords.map(d => d.fabricante))].sort(), [allRecords])
   const allTipos       = useMemo(() => [...new Set(allRecords.map(d => d.tipo))].sort(), [allRecords])
   const allTrimestres  = useMemo(() => [...new Set(allRecords.map(d => d.trimestreAno))].sort(), [allRecords])
   const allMeses       = useMemo(() => [...new Set(allRecords.map(d => d.mes))].sort((a, b) => a - b), [allRecords])
 
-  // Filtered records (client-side)
   const filtered = useMemo(() => {
     return allRecords.filter(r =>
       filters.trimestres.includes(r.trimestreAno) &&
@@ -77,7 +68,6 @@ export default function Dashboard() {
     )
   }, [allRecords, filters])
 
-  // Aggregations
   const aggByFab = useMemo((): AggByFab[] => {
     const m = new Map<string, AggByFab>()
     for (const r of filtered) {
@@ -96,7 +86,6 @@ export default function Dashboard() {
   }, [filtered])
 
   const aggByTrimestre = useMemo((): AggByTrimestre[] => {
-    // Always computed over ALL records (not filtered by trimestre) so the quarterly chart shows all quarters
     const m = new Map<string, AggByTrimestre>()
     for (const r of allRecords) {
       if (!filters.fabricantes.includes(r.fabricante) || !filters.tipos.includes(r.tipo)) continue
@@ -134,41 +123,16 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh] text-muted text-sm">
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="text-muted text-sm">
         Carregando dados…
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-dim">
-          {allTrimestres.length > 0
-            ? `${allTrimestres.join(', ')} · ${allRecords.length} SACs`
-            : 'Nenhum dado importado'}
-        </p>
-        <div className="flex items-center gap-2">
-          <ExportButton
-            trimestres={filters.trimestres}
-            fabricantes={filters.fabricantes.length === allFabricantes.length ? [] : filters.fabricantes}
-            tipos={filters.tipos.length === allTipos.length ? [] : filters.tipos}
-          />
-          <button
-            onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-fotus-blue text-white hover:opacity-90 transition-all cursor-pointer"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M7 9V1M4 4l3-3 3 3M2 11h10" />
-            </svg>
-            Importar Planilha
-          </button>
-        </div>
-      </div>
-
-      {/* Filter panel */}
-      <FilterPanel
+    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* Left sidebar */}
+      <FilterSidebar
         allFabricantes={allFabricantes}
         allTipos={allTipos}
         allTrimestres={allTrimestres}
@@ -184,96 +148,120 @@ export default function Dashboard() {
         onMes={v        => setFilters(prev => ({ ...prev, meses: v }))}
         onTiposCusto={v => setFilters(prev => ({ ...prev, tiposCusto: v }))}
         onClear={clearFilters}
-        totalSacs={allRecords.length}
         filteredSacs={filtered.length}
-        totalValue={totals.total}
+        totalSacs={allRecords.length}
       />
 
-      {allRecords.length === 0 ? (
-        <div className="bg-surface border border-dashed border-border rounded-xl p-16 text-center">
-          <p className="text-muted text-sm mb-3">Nenhum dado importado ainda.</p>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="px-5 py-2.5 rounded-lg bg-fotus-blue text-white text-sm font-medium hover:opacity-90 transition-all cursor-pointer"
-          >
-            Importar primeira planilha
-          </button>
+      {/* Main scrollable content */}
+      <div style={{ flex: 1, overflowY: 'auto' }} className="px-5 pb-10 pt-5 space-y-3">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] text-dim">
+            {allTrimestres.length > 0
+              ? `${allTrimestres.join(', ')} · ${allRecords.length} SACs`
+              : 'Nenhum dado importado'}
+          </p>
+          <div className="flex items-center gap-2">
+            <ExportButton
+              trimestres={filters.trimestres}
+              fabricantes={filters.fabricantes.length === allFabricantes.length ? [] : filters.fabricantes}
+              tipos={filters.tipos.length === allTipos.length ? [] : filters.tipos}
+            />
+            <button
+              onClick={() => setShowUpload(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition-all cursor-pointer"
+              style={{ background: '#1E3A5F' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 9V1M4 4l3-3 3 3M2 11h10" />
+              </svg>
+              Importar Planilha
+            </button>
+          </div>
         </div>
-      ) : (
-        <>
-          {/* KPIs */}
-          <KpiRow
-            total={totals.total}
-            sacs={filtered.length}
-            custoProduto={totals.prod}
-            custoEnvio={totals.envio}
-            custoColeta={totals.col}
-            totalSacs={allRecords.length}
-          />
 
-          {/* Cost strip */}
-          <CostStrip
-            custoProduto={tiposCusto.produto ? totals.prod : 0}
-            custoEnvio={tiposCusto.envio ? totals.envio : 0}
-            custoColeta={tiposCusto.coleta ? totals.col : 0}
-            sacs={filtered.length}
-            total={totals.total}
-          />
+        {allRecords.length === 0 ? (
+          <div className="bg-surface border border-dashed border-border rounded-xl p-16 text-center">
+            <p className="text-muted text-sm mb-3">Nenhum dado importado ainda.</p>
+            <button
+              onClick={() => setShowUpload(true)}
+              className="px-5 py-2.5 rounded-lg text-white text-sm font-medium hover:opacity-90 transition-all cursor-pointer"
+              style={{ background: '#1E3A5F' }}
+            >
+              Importar primeira planilha
+            </button>
+          </div>
+        ) : (
+          <>
+            <KpiRow
+              total={totals.total}
+              sacs={filtered.length}
+              custoProduto={totals.prod}
+              custoEnvio={totals.envio}
+              custoColeta={totals.col}
+              totalSacs={allRecords.length}
+            />
 
-          {/* Charts row 1 */}
-          <div className="grid grid-cols-1 lg:grid-cols-[58%_1fr] gap-3">
-            <Card title="Custo Total por Fabricante">
-              <BarFabricante
+            <CostStrip
+              custoProduto={tiposCusto.produto ? totals.prod : 0}
+              custoEnvio={tiposCusto.envio ? totals.envio : 0}
+              custoColeta={tiposCusto.coleta ? totals.col : 0}
+              sacs={filtered.length}
+              total={totals.total}
+            />
+
+            <div className="grid grid-cols-1 lg:grid-cols-[58%_1fr] gap-3">
+              <Card title="Custo Total por Fabricante">
+                <BarFabricante
+                  data={aggByFab}
+                  showProduto={tiposCusto.produto}
+                  showEnvio={tiposCusto.envio}
+                  showColeta={tiposCusto.coleta}
+                />
+              </Card>
+              <Card title="Distribuição de Custos">
+                <DonutDistribuicao
+                  custoProduto={tiposCusto.produto ? totals.prod : 0}
+                  custoEnvio={tiposCusto.envio ? totals.envio : 0}
+                  custoColeta={tiposCusto.coleta ? totals.col : 0}
+                />
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <Card title={`Evolução Mensal — ${filters.trimestres.join(', ') || 'todos'}`}>
+                <LineMensal
+                  records={filtered}
+                  showProduto={tiposCusto.produto}
+                  showEnvio={tiposCusto.envio}
+                  showColeta={tiposCusto.coleta}
+                />
+              </Card>
+              <Card title="Evolução Trimestral">
+                <LineQuarterly
+                  data={aggByTrimestre}
+                  showProduto={tiposCusto.produto}
+                  showEnvio={tiposCusto.envio}
+                  showColeta={tiposCusto.coleta}
+                />
+              </Card>
+            </div>
+
+            <Card title="Detalhamento por Fabricante">
+              <DetailsTable
                 data={aggByFab}
                 showProduto={tiposCusto.produto}
                 showEnvio={tiposCusto.envio}
                 showColeta={tiposCusto.coleta}
               />
             </Card>
-            <Card title="Distribuição de Custos">
-              <DonutDistribuicao
-                custoProduto={tiposCusto.produto ? totals.prod : 0}
-                custoEnvio={tiposCusto.envio ? totals.envio : 0}
-                custoColeta={tiposCusto.coleta ? totals.col : 0}
-              />
-            </Card>
-          </div>
+          </>
+        )}
 
-          {/* Charts row 2 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Card title={`Evolução Mensal — ${filters.trimestres.join(', ') || 'todos'}`}>
-              <LineMensal
-                records={filtered}
-                showProduto={tiposCusto.produto}
-                showEnvio={tiposCusto.envio}
-                showColeta={tiposCusto.coleta}
-              />
-            </Card>
-            <Card title="Evolução Trimestral">
-              <LineQuarterly
-                data={aggByTrimestre}
-                showProduto={tiposCusto.produto}
-                showEnvio={tiposCusto.envio}
-                showColeta={tiposCusto.coleta}
-              />
-            </Card>
-          </div>
-
-          {/* Details table */}
-          <Card title="Detalhamento por Fabricante">
-            <DetailsTable
-              data={aggByFab}
-              showProduto={tiposCusto.produto}
-              showEnvio={tiposCusto.envio}
-              showColeta={tiposCusto.coleta}
-            />
-          </Card>
-        </>
-      )}
-
-      {showUpload && (
-        <UploadModal onClose={() => setShowUpload(false)} onSuccess={fetchRecords} />
-      )}
+        {showUpload && (
+          <UploadModal onClose={() => setShowUpload(false)} onSuccess={fetchRecords} />
+        )}
+      </div>
     </div>
   )
 }
