@@ -14,10 +14,8 @@ export interface ParseDebug {
   custoColEnvio:  string
   custoColColeta: string
   tipoColProd:    string
-  dateColEnvio:   string
-  dateColColeta:  string
-  fabColEnvio:    string
-  fabColColeta:   string
+  dateColProd:    string   // Data de Criação_x — fonte do mês do SAC
+  fabColProd:     string
   allMonths:      number[]
   totals: { prod: number; envio: number; coleta: number }
 }
@@ -25,7 +23,7 @@ export interface ParseDebug {
 export interface ParseResult {
   records:   SacRecord[]
   debug:     ParseDebug
-  allMonths: number[]   // todos os meses encontrados (incluindo fora do trimestre)
+  allMonths: number[]   // todos os meses encontrados na aba Produtos
 }
 
 // ─── Helpers de detecção de coluna ────────────────────────────────────────────
@@ -63,10 +61,16 @@ function findFirstNumericCol(obj: Record<string, unknown>, ...excludeKeys: strin
 
 // ─── Candidatos de nome de coluna ────────────────────────────────────────────
 
-const SAC_CANDIDATES    = ['SAC', 'Nº SAC', 'N° SAC', 'N SAC', 'N.SAC', 'NUMERO SAC', 'OS', 'ID']
-const FAB_CANDIDATES    = ['Fabricante', 'FABRICANTE', 'Marca', 'MARCA']
-const MES_CANDIDATES    = ['Mês', 'Mes', 'MÊS', 'MES', 'Mês do SAC', 'Mês Ref', 'Mês Referência', 'Competência']
+const SAC_CANDIDATES = ['SAC', 'Nº SAC', 'N° SAC', 'N SAC', 'N.SAC', 'NUMERO SAC', 'OS', 'ID']
+const FAB_CANDIDATES = ['Fabricante', 'FABRICANTE', 'Marca', 'MARCA']
 const PRODUTO_CANDIDATES = ['Produto', 'PRODUTO', 'Descrição', 'DESCRICAO', 'Descrição do Produto', 'Item']
+
+// Data de criação do SAC — inclui "_x" que vem de merge pandas
+const DATE_PROD_CANDIDATES = [
+  'Data de Criação_x', 'Data de Criação', 'Data Criação', 'Data do SAC',
+  'Data', 'DATA', 'Criação', 'Abertura',
+]
+
 const CUSTO_PROD_CANDIDATES = [
   'Custo do Produto', 'Custo Produto', 'CUSTO PRODUTO', 'CUSTO DO PRODUTO',
   'Custo de Produto', 'Custo', 'CUSTO', 'Valor', 'VALOR', 'Total',
@@ -75,10 +79,6 @@ const CUSTO_FRETE_CANDIDATES = [
   'Valor_Frete', 'Valor Frete', 'VALOR_FRETE', 'VALOR FRETE',
   'Custo de Envio', 'Custo Envio', 'Custo de Coleta', 'Custo Coleta',
   'Frete', 'FRETE', 'Custo', 'CUSTO', 'Valor', 'VALOR',
-]
-const DATE_CANDIDATES = [
-  'Data do Faturamento', 'Data Faturamento', 'Data', 'DATA',
-  'Data de Envio', 'Data de Coleta', 'Data do SAC',
 ]
 
 const SHEET_PROD_NAMES   = ['Custo de Produtos', 'Custo Produtos', 'Produtos', 'Custo de Produto']
@@ -122,7 +122,7 @@ function extractMonth(raw: unknown): number | null {
     if (!isNaN(d.getTime())) return d.getMonth() + 1
   }
   if (typeof raw === 'number' && raw > 0) {
-    // Excel serial date
+    // Excel serial date (dias desde 1900-01-01)
     const d = new Date(Math.round((raw - 25569) * 86400 * 1000))
     if (!isNaN(d.getTime()) && d.getFullYear() > 1970) return d.getMonth() + 1
   }
@@ -131,11 +131,12 @@ function extractMonth(raw: unknown): number | null {
 
 // ─── Parser principal ─────────────────────────────────────────────────────────
 //
-// Metodologia (idêntica à aba TOTAIS da planilha):
-//   1. Custo de Produtos → acumula custoProduto por SAC (vários produtos por SAC)
-//   2. Custo de Envio / Coleta → agrega por coluna Fabricante da própria aba,
-//      filtrado aos meses do trimestre (Jan-Mar para 1T26)
-//   3. Distribui frete proporcionalmente ao custoProduto de cada SAC do fabricante
+// Metodologia:
+//   1. Custo de Produtos → acumula custoProduto por SAC; mês vem de "Data de Criação_x"
+//   2. Custo de Envio    → soma Valor_Frete por SAC (cross-ref direto pelo número de SAC)
+//   3. Custo de Coleta   → idem
+//   4. Cada SAC recebe seu frete exato (sem distribuição proporcional)
+//   5. Datas de Envio/Coleta NÃO são usadas — só o SAC de Produtos define o mês
 //
 export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promise<ParseResult> {
   const XLSX = await import('xlsx')
@@ -151,7 +152,9 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     }
     for (const c of candidates) {
       const cu = c.toUpperCase()
-      const found = sheetNames.find(s => s.toUpperCase().includes(cu) || cu.includes(s.toUpperCase().trim()))
+      const found = sheetNames.find(s =>
+        s.toUpperCase().includes(cu) || cu.includes(s.toUpperCase().trim())
+      )
       if (found) return found
     }
     return undefined
@@ -196,21 +199,17 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     ?? findFirstNumericCol(firstColeta, sacColColeta)
     ?? ''
 
-  const fabColProd    = findKey(firstProd,   FAB_CANDIDATES) ?? ''
-  const mesColProd    = findKey(firstProd,   MES_CANDIDATES) ?? ''    // opcional — mês na aba Produtos
-  const produtoCol    = findKey(firstProd,   PRODUTO_CANDIDATES) ?? ''
-  const fabColEnvio   = findKey(firstEnvio,  FAB_CANDIDATES) ?? ''
-  const fabColColeta  = findKey(firstColeta, FAB_CANDIDATES) ?? ''
-  const dateColEnvio  = findKey(firstEnvio,  DATE_CANDIDATES) ?? ''
-  const dateColColeta = findKey(firstColeta, DATE_CANDIDATES) ?? ''
+  const fabColProd = findKey(firstProd, FAB_CANDIDATES) ?? ''
+  const produtoCol = findKey(firstProd, PRODUTO_CANDIDATES) ?? ''
+
+  // Coluna de data em Custo de Produtos — "Data de Criação_x"
+  const dateColProd = findKey(firstProd, DATE_PROD_CANDIDATES) ?? ''
 
   const quarterMonths = getQuarterMonths(trimestreAno)
 
   // ── PASSO 1: Custo de Produtos → acumula por SAC ────────────────────────────
-  // O mês vem da coluna Mês da aba Produtos (se existir).
-  // Se não existir, todos os SACs ficam no primeiro mês do trimestre.
-  // As datas de Envio/Coleta NÃO determinam o mês do SAC — servem só
-  // para filtrar quais linhas de frete entram no cálculo proporcional.
+  // Mês do SAC vem de "Data de Criação_x" (col B).
+  // Se não encontrado, usa o primeiro mês do trimestre como fallback.
   const byId = new Map<number, SacRecord>()
 
   for (const row of rowsProd) {
@@ -221,18 +220,14 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     const fab   = String(fabColProd ? (row[fabColProd] ?? '') : '').trim()
     const prod  = String(produtoCol ? (row[produtoCol] ?? '') : '').trim()
 
-    // Mês: tenta ler da coluna Mês em Produtos; se não existe, usa mês 1 do trimestre
-    let mes = quarterMonths[0]
-    if (mesColProd) {
-      const rawMes = row[mesColProd]
-      const parsed = Number(rawMes)
-      if (!isNaN(parsed) && parsed >= 1 && parsed <= 12) {
-        mes = parsed
-      }
-    }
+    // Mês vem da data de criação do SAC (coluna B — "Data de Criação_x")
+    const mesFromDate = dateColProd
+      ? extractMonth(row[dateColProd])
+      : null
+    const mes = mesFromDate ?? quarterMonths[0]
 
     if (byId.has(sacId)) {
-      // Acumula custo — mantém fabricante/tipo/mês da primeira ocorrência
+      // Mesmo SAC pode ter vários produtos (múltiplas linhas) — acumula custo
       byId.get(sacId)!.custoProduto += custo
     } else {
       byId.set(sacId, {
@@ -249,66 +244,34 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     }
   }
 
-  // ── PASSO 2: fabProdTotals — soma custoProduto por Fabricante (de Produtos) ─
-  const fabProdTotals = new Map<string, number>()
-  for (const rec of byId.values()) {
-    fabProdTotals.set(rec.fabricante, (fabProdTotals.get(rec.fabricante) ?? 0) + rec.custoProduto)
-  }
-
-  // ── PASSO 3: Custo de Envio — agrega por Fabricante da aba Envio ────────────
-  //   Apenas linhas cujo SAC existe na aba Produtos (cross-ref por número de SAC)
-  //   Apenas meses do trimestre para os totais (linhas de Abril são ignoradas)
-  //   O mês de cada linha vem da coluna de data da aba Envio — NÃO afeta o campo mes do SAC
-  const fabEnvioTotals = new Map<string, number>()
-  const allMonthsSet   = new Set<number>(quarterMonths) // sempre inclui os meses do trimestre
-
+  // ── PASSO 2: Custo de Envio → cross-ref direto por SAC ──────────────────────
+  // Cada linha de Envio tem um número de SAC.
+  // Somamos o Valor_Frete diretamente no SAC correspondente de Produtos.
+  // As datas de Envio NÃO são usadas para nada.
   for (const row of rowsEnvio) {
     const sacId = Number(sacColEnvio ? row[sacColEnvio] : 0)
-    if (!sacId || !byId.has(sacId)) continue   // cross-ref: SAC deve existir em Produtos
+    if (!sacId) continue
 
-    const custo    = Number(custoColEnvio ? (row[custoColEnvio] ?? 0) : 0)
-    const fabEnvio = String(fabColEnvio   ? (row[fabColEnvio]   ?? '') : '').trim()
-    const absMonth = extractMonth(dateColEnvio ? row[dateColEnvio] : null) ?? quarterMonths[0]
+    const rec = byId.get(sacId)
+    if (!rec) continue   // SAC não existe em Produtos → ignorar
 
-    allMonthsSet.add(absMonth) // registra todos os meses encontrados (incluindo Abril)
-
-    if (quarterMonths.includes(absMonth)) {
-      fabEnvioTotals.set(fabEnvio, (fabEnvioTotals.get(fabEnvio) ?? 0) + custo)
-    }
+    const custo = Number(custoColEnvio ? (row[custoColEnvio] ?? 0) : 0)
+    rec.custoEnvio += custo
   }
 
-  // ── PASSO 4: Custo de Coleta — mesmo padrão ──────────────────────────────────
-  const fabColetaTotals = new Map<string, number>()
-
+  // ── PASSO 3: Custo de Coleta → cross-ref direto por SAC ─────────────────────
   for (const row of rowsColeta) {
     const sacId = Number(sacColColeta ? row[sacColColeta] : 0)
-    if (!sacId || !byId.has(sacId)) continue
+    if (!sacId) continue
 
-    const custo     = Number(custoColColeta ? (row[custoColColeta] ?? 0) : 0)
-    const fabColeta = String(fabColColeta   ? (row[fabColColeta]   ?? '') : '').trim()
-    const absMonth  = extractMonth(dateColColeta ? row[dateColColeta] : null) ?? quarterMonths[0]
+    const rec = byId.get(sacId)
+    if (!rec) continue
 
-    allMonthsSet.add(absMonth)
-
-    if (quarterMonths.includes(absMonth)) {
-      fabColetaTotals.set(fabColeta, (fabColetaTotals.get(fabColeta) ?? 0) + custo)
-    }
+    const custo = Number(custoColColeta ? (row[custoColColeta] ?? 0) : 0)
+    rec.custoColeta += custo
   }
 
-  // ── PASSO 5: Distribuir frete proporcionalmente ao custoProduto do SAC ───────
-  //   custoEnvio_SAC = (envioTotal_Fab / prodTotal_Fab) × custoProduto_SAC
-  //   O campo mes já foi definido na leitura de Produtos — não é alterado aqui
-  for (const rec of byId.values()) {
-    const fab       = rec.fabricante
-    const prodTotal = fabProdTotals.get(fab) ?? 0
-
-    if (prodTotal > 0) {
-      rec.custoEnvio  = ((fabEnvioTotals.get(fab)  ?? 0) / prodTotal) * rec.custoProduto
-      rec.custoColeta = ((fabColetaTotals.get(fab) ?? 0) / prodTotal) * rec.custoProduto
-    }
-  }
-
-  // ── PASSO 6: Calcular custoTotal e montar resultado ──────────────────────────
+  // ── PASSO 4: Calcular custoTotal e montar resultado ──────────────────────────
   const records = [...byId.values()].map(r => ({
     ...r,
     custoTotal: r.custoProduto + r.custoEnvio + r.custoColeta,
@@ -323,8 +286,10 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     { prod: 0, envio: 0, coleta: 0 },
   )
 
-  // Adiciona também os meses dos SACs vindos de Produtos
-  for (const rec of byId.values()) allMonthsSet.add(rec.mes)
+  // allMonths = meses únicos encontrados na data de criação dos SACs
+  const allMonthsSet = new Set<number>(records.map(r => r.mes))
+  // Garante que os meses do trimestre sempre aparecem no filtro
+  for (const m of quarterMonths) allMonthsSet.add(m)
   const allMonths = [...allMonthsSet].sort((a, b) => a - b)
 
   return {
@@ -338,9 +303,8 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
       sacColProd, sacColEnvio, sacColColeta,
       custoColProd, custoColEnvio, custoColColeta,
       tipoColProd:  produtoCol,
-      dateColEnvio, dateColColeta,
-      fabColEnvio,  fabColColeta,
-      // mesColProd é usado internamente; exibido no debug indiretamente via colsProd
+      dateColProd,
+      fabColProd,
       allMonths,
       totals,
     },

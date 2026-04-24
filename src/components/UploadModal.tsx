@@ -190,16 +190,15 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
               <div className="bg-surface2 rounded-lg px-4 py-3 text-[11px] space-y-1.5">
                 <p className="font-semibold text-foreground text-[12px]">{records.length} registros · {fabs.length} fabricantes</p>
                 <p className="text-muted leading-relaxed">{fabs.join(', ')}</p>
-                {debug.allMonths.length > 0 && (
+                {debug.dateColProd && (
                   <p className="text-dim text-[10px]">
-                    Meses encontrados (Envio/Coleta):{' '}
-                    {debug.allMonths.map(m => ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][m] ?? m).join(', ')}
+                    Data criação SAC: <span className="font-mono text-fotus-sky">{debug.dateColProd}</span>
                   </p>
                 )}
-                {(debug.fabColEnvio || debug.fabColColeta) && (
+                {debug.allMonths.length > 0 && (
                   <p className="text-dim text-[10px]">
-                    Col. Fabricante → Envio: <span className="font-mono text-fotus-sky">{debug.fabColEnvio || '—'}</span>{' '}
-                    · Coleta: <span className="font-mono text-fotus-sky">{debug.fabColColeta || '—'}</span>
+                    Meses detectados:{' '}
+                    {debug.allMonths.map(m => ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][m] ?? m).join(', ')}
                   </p>
                 )}
               </div>
