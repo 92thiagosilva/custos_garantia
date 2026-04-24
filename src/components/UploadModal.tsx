@@ -186,10 +186,22 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
                 ))}
               </div>
 
-              {/* Fabricantes */}
-              <div className="bg-surface2 rounded-lg px-4 py-3 text-[11px]">
-                <p className="font-semibold text-foreground text-[12px] mb-1">{records.length} registros · {fabs.length} fabricantes</p>
+              {/* Fabricantes + meses */}
+              <div className="bg-surface2 rounded-lg px-4 py-3 text-[11px] space-y-1.5">
+                <p className="font-semibold text-foreground text-[12px]">{records.length} registros · {fabs.length} fabricantes</p>
                 <p className="text-muted leading-relaxed">{fabs.join(', ')}</p>
+                {debug.allMonths.length > 0 && (
+                  <p className="text-dim text-[10px]">
+                    Meses encontrados (Envio/Coleta):{' '}
+                    {debug.allMonths.map(m => ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][m] ?? m).join(', ')}
+                  </p>
+                )}
+                {(debug.fabColEnvio || debug.fabColColeta) && (
+                  <p className="text-dim text-[10px]">
+                    Col. Fabricante → Envio: <span className="font-mono text-fotus-sky">{debug.fabColEnvio || '—'}</span>{' '}
+                    · Coleta: <span className="font-mono text-fotus-sky">{debug.fabColColeta || '—'}</span>
+                  </p>
+                )}
               </div>
             </div>
           )}

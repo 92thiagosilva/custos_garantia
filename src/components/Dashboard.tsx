@@ -22,10 +22,18 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
+/** Retorna os meses do trimestre (absolutos): 1T → [1,2,3], 2T → [4,5,6], etc. */
+function quarterMonths(trimestreAno: string): number[] {
+  const q = parseInt(trimestreAno[0], 10)
+  const s = (q - 1) * 3 + 1
+  return [s, s + 1, s + 2]
+}
+
 export default function Dashboard() {
   const [allRecords, setAllRecords] = useState<SacRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]       = useState(true)
   const [showUpload, setShowUpload] = useState(false)
+  const [deleting, setDeleting]     = useState(false)
 
   const [filters, setFilters] = useState<FilterState>({
     trimestres: [],
@@ -38,15 +46,26 @@ export default function Dashboard() {
   const fetchRecords = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/records')
+      const res  = await fetch('/api/records')
       const data: SacRecord[] = await res.json()
       setAllRecords(data)
 
-      const trimestres = [...new Set(data.map(d => d.trimestreAno))].sort()
+      const trimestres  = [...new Set(data.map(d => d.trimestreAno))].sort()
       const fabricantes = [...new Set(data.map(d => d.fabricante))].sort()
       const tipos       = [...new Set(data.map(d => d.tipo))].sort()
-      const meses       = [...new Set(data.map(d => d.mes))].sort((a, b) => a - b)
-      setFilters(prev => ({ ...prev, trimestres, fabricantes, tipos, meses }))
+      const allMeses    = [...new Set(data.map(d => d.mes))].sort((a, b) => a - b)
+
+      // Seleciona por padrão apenas os meses do trimestre (não o Abril extra etc.)
+      const qMonths = new Set(trimestres.flatMap(t => quarterMonths(t)))
+      const defaultMeses = allMeses.filter(m => qMonths.has(m))
+
+      setFilters(prev => ({
+        ...prev,
+        trimestres,
+        fabricantes,
+        tipos,
+        meses: defaultMeses,
+      }))
     } finally {
       setLoading(false)
     }
@@ -111,14 +130,27 @@ export default function Dashboard() {
   const { tiposCusto } = filters
 
   const clearFilters = () => {
+    const qMonths = new Set(allTrimestres.flatMap(t => quarterMonths(t)))
+    const defaultMeses = allMeses.filter(m => qMonths.has(m))
     setFilters(prev => ({
       ...prev,
-      trimestres: allTrimestres,
+      trimestres:  allTrimestres,
       fabricantes: allFabricantes,
-      tipos: allTipos,
-      meses: allMeses,
-      tiposCusto: { produto: true, envio: true, coleta: true },
+      tipos:       allTipos,
+      meses:       defaultMeses,
+      tiposCusto:  { produto: true, envio: true, coleta: true },
     }))
+  }
+
+  const handleDeleteAll = async () => {
+    if (!confirm('Tem certeza que deseja apagar todos os dados importados? Essa ação não pode ser desfeita.')) return
+    setDeleting(true)
+    try {
+      await fetch('/api/records', { method: 'DELETE' })
+      await fetchRecords()
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (loading) {
@@ -169,6 +201,31 @@ export default function Dashboard() {
               meses={filters.meses}
               allMeses={allMeses}
             />
+
+            {allRecords.length > 0 && (
+              <button
+                onClick={handleDeleteAll}
+                disabled={deleting}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer disabled:opacity-50"
+                style={{ background: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FECACA' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEE2E2' }}
+              >
+                {deleting ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                    <path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.93 2.93l1.41 1.41M9.66 9.66l1.41 1.41M2.93 11.07l1.41-1.41M9.66 4.34l1.41-1.41" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="1 3 13 3" />
+                    <path d="M11 3l-1 9H4L3 3" />
+                    <path d="M5 3V1h4v2" />
+                  </svg>
+                )}
+                {deleting ? 'Apagando…' : 'Apagar dados'}
+              </button>
+            )}
+
             <button
               onClick={() => setShowUpload(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition-all cursor-pointer"

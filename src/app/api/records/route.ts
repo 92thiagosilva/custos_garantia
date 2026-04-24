@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
   }))
 
   // Apaga todos os registros dos trimestres presentes no import antes de reinserir.
-  // Garante que um re-import sempre reflita os valores atuais da planilha.
   const trimestresNoImport = [...new Set(data.map(r => r.trimestreAno))]
   await prisma.sacRecord.deleteMany({
     where: { trimestreAno: { in: trimestresNoImport } },
@@ -63,4 +62,17 @@ export async function POST(request: NextRequest) {
   const result = await prisma.sacRecord.createMany({ data })
 
   return Response.json({ inserted: result.count, replaced: trimestresNoImport })
+}
+
+// DELETE — apaga todos os registros (ou por trimestre se ?trimestre= fornecido)
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const trimestreParam = searchParams.get('trimestre')
+  const trimestres = trimestreParam ? trimestreParam.split(',').filter(Boolean) : []
+
+  const result = await prisma.sacRecord.deleteMany({
+    where: trimestres.length ? { trimestreAno: { in: trimestres } } : {},
+  })
+
+  return Response.json({ deleted: result.count })
 }
