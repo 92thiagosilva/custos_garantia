@@ -65,6 +65,7 @@ function findFirstNumericCol(obj: Record<string, unknown>, ...excludeKeys: strin
 
 const SAC_CANDIDATES    = ['SAC', 'Nº SAC', 'N° SAC', 'N SAC', 'N.SAC', 'NUMERO SAC', 'OS', 'ID']
 const FAB_CANDIDATES    = ['Fabricante', 'FABRICANTE', 'Marca', 'MARCA']
+const MES_CANDIDATES    = ['Mês', 'Mes', 'MÊS', 'MES', 'Mês do SAC', 'Mês Ref', 'Mês Referência', 'Competência']
 const PRODUTO_CANDIDATES = ['Produto', 'PRODUTO', 'Descrição', 'DESCRICAO', 'Descrição do Produto', 'Item']
 const CUSTO_PROD_CANDIDATES = [
   'Custo do Produto', 'Custo Produto', 'CUSTO PRODUTO', 'CUSTO DO PRODUTO',
@@ -196,6 +197,7 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     ?? ''
 
   const fabColProd    = findKey(firstProd,   FAB_CANDIDATES) ?? ''
+  const mesColProd    = findKey(firstProd,   MES_CANDIDATES) ?? ''    // opcional — mês na aba Produtos
   const produtoCol    = findKey(firstProd,   PRODUTO_CANDIDATES) ?? ''
   const fabColEnvio   = findKey(firstEnvio,  FAB_CANDIDATES) ?? ''
   const fabColColeta  = findKey(firstColeta, FAB_CANDIDATES) ?? ''
@@ -205,6 +207,10 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
   const quarterMonths = getQuarterMonths(trimestreAno)
 
   // ── PASSO 1: Custo de Produtos → acumula por SAC ────────────────────────────
+  // O mês vem da coluna Mês da aba Produtos (se existir).
+  // Se não existir, todos os SACs ficam no primeiro mês do trimestre.
+  // As datas de Envio/Coleta NÃO determinam o mês do SAC — servem só
+  // para filtrar quais linhas de frete entram no cálculo proporcional.
   const byId = new Map<number, SacRecord>()
 
   for (const row of rowsProd) {
@@ -212,10 +218,21 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     if (!sacId) continue
 
     const custo = Number(custoColProd ? row[custoColProd] : 0)
-    const fab   = String(fabColProd     ? (row[fabColProd]   ?? '') : '').trim()
-    const prod  = String(produtoCol     ? (row[produtoCol]   ?? '') : '').trim()
+    const fab   = String(fabColProd ? (row[fabColProd] ?? '') : '').trim()
+    const prod  = String(produtoCol ? (row[produtoCol] ?? '') : '').trim()
+
+    // Mês: tenta ler da coluna Mês em Produtos; se não existe, usa mês 1 do trimestre
+    let mes = quarterMonths[0]
+    if (mesColProd) {
+      const rawMes = row[mesColProd]
+      const parsed = Number(rawMes)
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 12) {
+        mes = parsed
+      }
+    }
 
     if (byId.has(sacId)) {
+      // Acumula custo — mantém fabricante/tipo/mês da primeira ocorrência
       byId.get(sacId)!.custoProduto += custo
     } else {
       byId.set(sacId, {
@@ -227,7 +244,7 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
         custoEnvio:   0,
         custoColeta:  0,
         custoTotal:   0,
-        mes:          quarterMonths[0],
+        mes,
       })
     }
   }
@@ -239,11 +256,11 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
   }
 
   // ── PASSO 3: Custo de Envio — agrega por Fabricante da aba Envio ────────────
-  //   Apenas linhas cujo SAC existe na aba Produtos (cross-ref)
-  //   Apenas meses do trimestre para os totais (Apr fica no allMonths mas não entra no total)
+  //   Apenas linhas cujo SAC existe na aba Produtos (cross-ref por número de SAC)
+  //   Apenas meses do trimestre para os totais (linhas de Abril são ignoradas)
+  //   O mês de cada linha vem da coluna de data da aba Envio — NÃO afeta o campo mes do SAC
   const fabEnvioTotals = new Map<string, number>()
-  const sacToMonth     = new Map<number, number>()
-  const allMonthsSet   = new Set<number>()
+  const allMonthsSet   = new Set<number>(quarterMonths) // sempre inclui os meses do trimestre
 
   for (const row of rowsEnvio) {
     const sacId = Number(sacColEnvio ? row[sacColEnvio] : 0)
@@ -253,8 +270,7 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     const fabEnvio = String(fabColEnvio   ? (row[fabColEnvio]   ?? '') : '').trim()
     const absMonth = extractMonth(dateColEnvio ? row[dateColEnvio] : null) ?? quarterMonths[0]
 
-    allMonthsSet.add(absMonth)
-    if (!sacToMonth.has(sacId)) sacToMonth.set(sacId, absMonth)
+    allMonthsSet.add(absMonth) // registra todos os meses encontrados (incluindo Abril)
 
     if (quarterMonths.includes(absMonth)) {
       fabEnvioTotals.set(fabEnvio, (fabEnvioTotals.get(fabEnvio) ?? 0) + custo)
@@ -268,12 +284,11 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     const sacId = Number(sacColColeta ? row[sacColColeta] : 0)
     if (!sacId || !byId.has(sacId)) continue
 
-    const custo      = Number(custoColColeta ? (row[custoColColeta] ?? 0) : 0)
-    const fabColeta  = String(fabColColeta   ? (row[fabColColeta]   ?? '') : '').trim()
-    const absMonth   = extractMonth(dateColColeta ? row[dateColColeta] : null) ?? quarterMonths[0]
+    const custo     = Number(custoColColeta ? (row[custoColColeta] ?? 0) : 0)
+    const fabColeta = String(fabColColeta   ? (row[fabColColeta]   ?? '') : '').trim()
+    const absMonth  = extractMonth(dateColColeta ? row[dateColColeta] : null) ?? quarterMonths[0]
 
     allMonthsSet.add(absMonth)
-    if (!sacToMonth.has(sacId)) sacToMonth.set(sacId, absMonth)
 
     if (quarterMonths.includes(absMonth)) {
       fabColetaTotals.set(fabColeta, (fabColetaTotals.get(fabColeta) ?? 0) + custo)
@@ -282,7 +297,8 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
 
   // ── PASSO 5: Distribuir frete proporcionalmente ao custoProduto do SAC ───────
   //   custoEnvio_SAC = (envioTotal_Fab / prodTotal_Fab) × custoProduto_SAC
-  for (const [sacId, rec] of byId) {
+  //   O campo mes já foi definido na leitura de Produtos — não é alterado aqui
+  for (const rec of byId.values()) {
     const fab       = rec.fabricante
     const prodTotal = fabProdTotals.get(fab) ?? 0
 
@@ -290,9 +306,6 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
       rec.custoEnvio  = ((fabEnvioTotals.get(fab)  ?? 0) / prodTotal) * rec.custoProduto
       rec.custoColeta = ((fabColetaTotals.get(fab) ?? 0) / prodTotal) * rec.custoProduto
     }
-
-    // Mês absoluto do SAC (derivado da data de faturamento do envio/coleta)
-    rec.mes = sacToMonth.get(sacId) ?? quarterMonths[0]
   }
 
   // ── PASSO 6: Calcular custoTotal e montar resultado ──────────────────────────
@@ -310,6 +323,8 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
     { prod: 0, envio: 0, coleta: 0 },
   )
 
+  // Adiciona também os meses dos SACs vindos de Produtos
+  for (const rec of byId.values()) allMonthsSet.add(rec.mes)
   const allMonths = [...allMonthsSet].sort((a, b) => a - b)
 
   return {
@@ -325,6 +340,7 @@ export async function parseGarantiaXlsx(file: File, trimestreAno: string): Promi
       tipoColProd:  produtoCol,
       dateColEnvio, dateColColeta,
       fabColEnvio,  fabColColeta,
+      // mesColProd é usado internamente; exibido no debug indiretamente via colsProd
       allMonths,
       totals,
     },
